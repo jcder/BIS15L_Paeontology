@@ -1,0 +1,287 @@
+---
+title: "nis15 final project jon"
+author: "Jonathan Der"
+date: "2023-03-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "BIS015 PROJECT"
+author: "Isaac Yang"
+date: "2023-03-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Up Library
+```{r}
+library(tidyverse)
+library(devtools)
+#devtools::install_github("dkahle/ggmap")
+library(ggmap)
+library(janitor)
+#install.packages("ggthemes")
+library(ggthemes)
+```
+#Exploring which theme looks beest
+```{r}
+ls("package:ggthemes")[grepl("theme_", ls("package:ggthemes"))]
+```
+
+
+#Load in Paleontology Data
+
+
+```{r}
+bryon_paleontology <- read_csv("C:/Users/jonat/OneDrive/Desktop/BIS15L_Paeontology/Data/bryon-paleobiodb/pbdb_data.csv")
+```
+#Clean the Data
+```{r}
+bryon_paleontology <- janitor::clean_names(bryon_paleontology)
+```
+
+#Take a look at the Data
+```{r}
+#mainly lots of categorical data, many bar plots
+glimpse(bryon_paleontology)
+```
+```{r}
+options(scipen = 999)
+```
+
+#Just doing counts of names to see what data to analyze
+```{r}
+bryon_paleontology %>% 
+  count(abund_value)
+```
+
+
+```{r}
+#Areas of interest: max_ma, min_ma, ref_pubyr, plant_organ, abund_value, state/county, the lithification ones, pres_mode, bioerosion, have up to phylum
+names(bryon_paleontology)
+```
+
+#State of the Specimens
+```{r}
+bryon_paleontology %>%
+  filter(!is.na(preservation_quality)) %>% 
+  ggplot(aes(x=preservation_quality))+geom_bar()+
+  theme(plot.title = element_text(size = rel(1.25), hjust = 0.5))+
+  labs(title = "Specimen Quality",
+      x = "Quality",
+      y = "Amount of Specimens")+
+  theme_clean()
+```
+
+#Construct a Bounding Box
+```{r}
+bryon_paleontology %>% 
+   filter(!is.na(lat) & !is.na(lng)) %>% 
+  select(lng, lat) %>% 
+  summary()
+```
+```{r}
+longitude_paleo <- c(-179, 179)
+latitude_paleo <- c(-85, 100)
+bbox_paleo <- make_bbox(longitude_paleo, latitude_paleo, f = 0.05)
+bbox_paleo
+```
+
+#Create Map (Specimen Locations)
+```{r}
+map_paleo <- get_map(bbox_paleo, source = "stamen")
+```
+```{r}
+ggmap(map_paleo)+
+  geom_point(data = bryon_paleontology, aes(lng, lat, color = class)) +
+  labs(x= "Longitude", y= "Latitude", title =" Class Locations")+
+   theme(plot.title = element_text(size = rel(1.25), hjust = 0.5))
+```
+
+#Get a sense of when the data was collected
+```{r}
+bryon_paleontology %>% 
+  ggplot(aes(x=ref_pubyr))+geom_bar(na.rm = T)+
+  xlim(1800, 2020)+
+  labs(title = "Paleontology Data Collection Over Time",
+       x = "Year",
+       y = "Specimens Found")+
+   theme(plot.title = element_text(size = rel(1.25), hjust = 0.5))+
+  theme_clean()
+```
+
+```{r}
+#Why was there so much registered in 1999? It is nearly double that of the year in second place.
+#Very hard to find why, most of the records are interested only in new discoveries
+bryon_paleontology %>% 
+  count(ref_pubyr, sort = T)
+```
+
+#Most Prominent Class
+```{r}
+#Smaller sea life makes sense, very abundant
+#Mammals intersting, took over much of the world
+bryon_paleontology %>%
+  filter(!is.na(class)) %>%  
+  count(class, sort = T) %>% 
+  top_n(5, n)
+```
+
+#Bivalvia is a group of marine/freshwater molluscs that have a shell of two hinged parts nad have sideways compressed bodies.
+#Gastropda are just slugs and snails
+#Rhynchonellata have valves on the upper and lower with varying shell forms.
+#Mammalia are mammals. They are vertebrates and produce milk.
+#Cephalopoda class of mollusks prominant heads and set of tentacles.
+
+#Look at state of how it was found
+```{r}
+bryon_paleontology %>%
+  filter(lithology1 != "not reported") %>%  
+  count(lithology1, sort = T) %>% 
+  top_n(5, n)
+```
+
+
+```{r}
+bryon_paleontology %>%
+  filter(!is.na(lithology1)) %>%
+  count(lithology1, sort = T) %>% 
+  top_n(15, n) %>% 
+  ggplot(aes(x=lithology1, y = n))+geom_col()+
+  theme(plot.title = element_text(size = rel(1.25), hjust = 0.5))+
+  labs(title = "Rocks Structures Surrounding Specimens (Top 15)",
+      x = "Rock Structures",
+      y = "Amount of Specimens")+
+  theme_clean()+
+  coord_flip()
+```
+
+#Focus on analyzing the most prominent ones
+```{r}
+#MA stands for Million Years
+bryon_paleontology %>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda") %>% 
+  mutate(mean_ma = (max_ma+min_ma)/2) %>% 
+  ggplot(aes(x = class, y = mean_ma))+geom_boxplot(na.rm = T)+
+  theme(plot.title = element_text(size = rel(1.25), hjust = 0.5))+
+  labs(title = "Specimen Age",
+      x = "Class",
+      y = "Age Range (Millions of Years)")+
+  theme_clean()
+```
+
+```{r}
+bryon_paleontology %>%
+  filter(abund_value != "(none given)" | abund_value != "-") %>% 
+  mutate(abund_value = as.character.numeric_version(abund_value)) %>% 
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda") %>%
+  ggplot(aes(x = class, y = abund_value)) + 
+  geom_boxplot()+ 
+  labs(title = "Distribution of Abundance of Specimens")
+#how should i display the abundance values?
+```
+
+```{r}
+bryon_paleontology %>% 
+  count(abund_value)
+```
+#testing graph of diets
+```{r}
+bryon_paleontology %>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda") %>%
+  count(diet, sort = T)
+
+#top 5 are (suspension feeder, carnivore, grazer, herbivore, omnivore)
+```
+
+```{r}
+#facet wrap
+bryon_paleontology%>%
+  
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda") %>%
+  filter (diet == "herbivore" | diet == "omnivore" | diet == "grazer" | 
+            diet == "suspension feeder" | diet == "carnivore") %>%
+  ggplot(aes(x=class, fill = diet))+geom_bar()+
+ # scale_y_log10()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+  labs(title = "Diet of Top 5 Most Occuring Classes",
+       x = "class",
+       y = "Specimen Count")+
+  theme_clean()
+```
+```{r}
+names(bryon_paleontology)
+```
+
+#Testing Max_ma/min_ma vs abund_in_sediment (Not doing)
+
+```{r}
+bryon_paleontology%>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda") 
+
+```
+
+# LIthology of top 5 specimen 
+```{r}
+lithology <- bryon_paleontology %>%
+  count(lithology1, sort = T) %>% 
+  top_n(15, n) 
+lithology
+
+```
+```{r}
+bryon_paleontology %>%
+  select(class, lithology1)%>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda")%>%
+  filter(lithology1 == "sandstone" | lithology1 == '"limestone"' | lithology1 == '"shale"' | lithology1 == "siltstone" |
+           lithology1 == "claystone" | lithology1 == '"siliciclastic"'| lithology1 == "mudstone" | lithology1 == "lime mudstone"|
+           lithology1 == "not reported" | lithology1 =="marl"  | lithology1 == "packstone" | lithology1 == "wackestone" |
+           lithology1 == "grainstone"| lithology1 == '"reef rocks"') %>%
+  ggplot(aes(x=lithology1, fill = class))+
+  #scale_y_log10()+
+    geom_bar()+
+  facet_grid(class~.)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+  labs(title = "Lithology by Top 5 Classes",
+       x = NULL,
+       y = "Specimen Count",
+       fill = "Class")+
+  theme_clean()
+```
+```{r}
+living <- bryon_paleontology %>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda")%>%
+  count(life_habit, sort = T) %>% 
+  top_n(15, n) 
+living
+```
+
+```{r}
+bryon_paleontology %>%
+  select(class, life_habit)%>%
+  filter(class == "Bivalvia" | class == "Gastropoda" | class == "Rhynchonellata" | class == "Mammalia" | class == "Cephalopoda")%>%
+  ggplot(aes(x=life_habit, fill = class))+
+  #scale_y_log10()+
+    geom_bar()+
+  facet_grid(class~.)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+  labs(title ="Life Habits of the Top 5 Classes",
+       x = "Life Habit",
+       y = "Specimen Count",
+       fill = "Class")
+```
+
+```{r}
+bryon_paleontology %>%
+  select(class, life_habit)%>%
+  filter(class == "Cephalopoda")%>%
+  count(life_habit, sort = T)
+```
+
